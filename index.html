@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Madman, Worker, or Elder Gods Sort</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            touch-action: none;
+            overflow: hidden;
+            background-color: #0d0000;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            background: #1a0505;
+            box-shadow: 0 10px 50px rgba(255,0,0,0.2);
+            border-radius: 12px;
+            max-width: 95vw;
+            max-height: 70vh;
+        }
+        .touch-button {
+            position: absolute;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            user-select: none;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            transition: transform 0.1s;
+        }
+        .touch-button:active { transform: scale(0.9); }
+        
+        #btn-left { bottom: 20px; left: 20px; width: 80px; height: 80px; border: 4px solid #dc2626; }
+        #btn-right { bottom: 20px; right: 20px; width: 80px; height: 80px; border: 4px solid #2563eb; }
+        #btn-shoot { bottom: 110px; left: 50%; transform: translateX(-50%); width: 90px; height: 90px; border: 4px solid #10b981; }
+        
+        .hidden { display: none; }
+        .life-heart { display: inline-block; transition: all 0.3s ease; }
+        .life-lost { filter: grayscale(1) opacity(0.3); transform: scale(0.8); }
+        
+        #time-bar-container {
+            position: absolute;
+            top: 80px;
+            width: 200px;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        #time-bar-fill {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to right, #ef4444, #991b1b);
+            transition: width 0.1s linear;
+        }
+
+        .manual-item {
+            background: #1e1e1e;
+            border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 10px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-align: left;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            margin-bottom: 2px;
+        }
+        .manual-img {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            background: #000;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* Jumpscare Overlay */
+        #jumpscare-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 100;
+            display: none;
+            background: black;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        #jumpscare-image {
+            width: 150%;
+            height: 150%;
+            object-fit: cover;
+            filter: contrast(2) brightness(0.8);
+        }
+
+        /* Tutorial Bubble */
+        #tutorial-bubble {
+            position: absolute;
+            top: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #3b82f6;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 15px;
+            font-weight: bold;
+            z-index: 60;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- UI Overlay -->
+    <div id="ui-overlay" class="absolute top-4 left-0 w-full px-6 flex justify-between items-center z-20">
+        <div class="bg-black/80 p-2 px-4 rounded-full shadow-sm text-white border border-red-900/50">
+            <span class="text-gray-400 text-sm">SCORE:</span>
+            <span id="score-display" class="font-bold text-xl ml-1 text-red-500">0</span>
+        </div>
+        <div class="bg-black/80 p-2 px-4 rounded-full shadow-sm text-white border border-red-900/50">
+            <div id="difficulty-display" class="text-xs text-yellow-500 font-bold">LEVEL: 1</div>
+        </div>
+        <div class="bg-black/80 p-2 px-4 rounded-full shadow-sm text-white border border-red-900/50">
+            <span class="text-gray-400 text-sm mr-2">LIFE:</span>
+            <div id="life-container" class="flex gap-1">
+                <span class="life-heart text-xl">🖤</span>
+                <span class="life-heart text-xl">🖤</span>
+                <span class="life-heart text-xl">🖤</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="time-bar-container">
+        <div id="time-bar-fill"></div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Jumpscare Element -->
+    <div id="jumpscare-overlay">
+        <img id="jumpscare-image" src="https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/character_cthulhu_azathoth.png" alt="Azathoth">
+    </div>
+
+    <!-- Start Screen -->
+    <div id="start-screen" class="absolute inset-0 bg-black/95 z-30 flex flex-col items-center justify-center p-6 text-center text-white">
+        <h1 class="text-4xl font-bold mb-2 tracking-widest text-red-600">深淵の選別</h1>
+        <p class="text-gray-400 mb-4">現れるモノを瞬時に判断せよ</p>
+        
+        <div id="best-score-start" class="mb-6 bg-red-900/20 px-4 py-1 rounded border border-red-900/50 text-red-400 text-sm">
+            BEST SCORE: <span id="high-score-display-start">0</span>
+        </div>
+        
+        <div id="loading-msg" class="mb-4 text-sm text-gray-600 italic">精神状態を確認中...</div>
+        
+        <div class="flex flex-col gap-3 w-64">
+            <button id="start-btn" onclick="startGame()" class="hidden bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-10 rounded-full transition-transform active:scale-95 shadow-lg border border-red-500/50">
+                隔離・殲滅開始
+            </button>
+            <button id="tutorial-btn" onclick="startTutorial()" class="hidden bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 px-10 rounded-full transition-transform active:scale-95 shadow-lg border border-blue-500/50">
+                チュートリアル
+            </button>
+            <button id="manual-btn" onclick="toggleManual(true)" class="hidden bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-10 rounded-full transition-transform active:scale-95 border border-gray-600">
+                マニュアル
+            </button>
+        </div>
+    </div>
+
+    <!-- Tutorial Bubble -->
+    <div id="tutorial-bubble" class="hidden">
+        <span id="tutorial-text">ここに説明が表示されます</span>
+    </div>
+
+    <!-- Manual Overlay -->
+    <div id="manual-screen" class="absolute inset-0 bg-black/98 z-50 flex flex-col items-center p-6 text-center text-white hidden overflow-y-auto">
+        <h2 class="text-3xl font-bold mb-4 text-red-500 tracking-widest">選別マニュアル</h2>
+        <div class="grid grid-cols-1 gap-2 w-full max-w-md mb-6">
+            <div class="manual-item">
+                <img src="https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/stand_sagyouin_shinken_man.png" class="manual-img">
+                <div>
+                    <div class="font-bold text-base text-blue-400">作業員</div>
+                    <div class="text-[10px] text-gray-300">【右/D】 現場へ戻せ。</div>
+                </div>
+            </div>
+            <div class="manual-item">
+                <img src="https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/mental_yandere_woman.png" class="manual-img">
+                <div>
+                    <div class="font-bold text-base text-red-400">狂人</div>
+                    <div class="text-[10px] text-gray-300">【左/A】 隔離しろ。</div>
+                </div>
+            </div>
+            <div class="manual-item">
+                <img src="https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/character_cthulhu_kuturufu.png" class="manual-img">
+                <div>
+                    <div class="font-bold text-base text-green-400">怪物 (クトゥルフ)</div>
+                    <div class="text-[10px] text-gray-300">【射撃/W】 直ちに殲滅。</div>
+                </div>
+            </div>
+            <div class="manual-item border-green-700">
+                <img src="https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/character_cthulhu_hastur.png" class="manual-img">
+                <div>
+                    <div class="font-bold text-base text-green-300">ハスター</div>
+                    <div class="text-[10px] text-gray-300">【射撃】 耐久力が高い。3回撃て。</div>
+                </div>
+            </div>
+            <div class="manual-item">
+                <img src="https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/fantasy_berserker.png" class="manual-img">
+                <div>
+                    <div class="font-bold text-base text-orange-500">バーサーカー</div>
+                    <div class="text-[10px] text-gray-300">【射撃】で鎮圧後、【左】へ。</div>
+                </div>
+            </div>
+            <div class="manual-item border-purple-600 bg-purple-900/30">
+                <img src="https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/character_cthulhu_azathoth.png" class="manual-img">
+                <div>
+                    <div class="font-bold text-base text-purple-400 italic">アザトース</div>
+                    <div class="text-[10px] text-purple-200">【放置】 干渉すれば即死。</div>
+                </div>
+            </div>
+        </div>
+        <button onclick="toggleManual(false)" class="bg-red-700 hover:bg-red-800 text-white font-bold py-3 px-16 rounded-full shadow-lg border border-red-500/50 mb-10 transition-transform active:scale-95">了解</button>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="absolute inset-0 bg-red-950/95 z-40 flex flex-col items-center justify-center p-6 text-center text-white hidden">
+        <h2 id="game-over-title" class="text-5xl font-bold mb-4">完全に発狂した</h2>
+        <div class="mb-10 flex flex-col items-center">
+            <p class="text-xl mb-1 text-gray-300">SCORE</p>
+            <p id="final-score" class="text-7xl font-black text-red-500 mb-4">0</p>
+            <p id="new-record-label" class="text-yellow-400 font-bold hidden mb-4 animate-bounce">✨ NEW RECORD ✨</p>
+            <div class="bg-black/40 px-6 py-2 rounded-full border border-red-500/30">
+                <span class="text-gray-400 text-sm">BEST SCORE:</span>
+                <span id="high-score-display-end" class="font-bold ml-2">0</span>
+            </div>
+        </div>
+        <button onclick="resetGame()" class="bg-white text-red-950 font-bold py-3 px-10 rounded-full hover:bg-gray-100 transition-transform active:scale-95 shadow-xl">
+            再び目覚める
+        </button>
+    </div>
+
+    <div id="feedback" class="absolute top-1/4 transform -translate-y-1/2 pointer-events-none text-4xl font-black transition-all duration-300 opacity-0 z-50 text-center w-full"></div>
+
+    <!-- Controls -->
+    <div id="btn-left" class="touch-button md:hidden">←</div>
+    <div id="btn-shoot" class="touch-button md:hidden">🎯</div>
+    <div id="btn-right" class="touch-button md:hidden">→</div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score-display');
+    const diffEl = document.getElementById('difficulty-display');
+    const lifeContainer = document.getElementById('life-container');
+    const timeBarFill = document.getElementById('time-bar-fill');
+    const startScreen = document.getElementById('start-screen');
+    const manualScreen = document.getElementById('manual-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const gameOverTitle = document.getElementById('game-over-title');
+    const finalScoreEl = document.getElementById('final-score');
+    const highScoreStartEl = document.getElementById('high-score-display-start');
+    const highScoreEndEl = document.getElementById('high-score-display-end');
+    const newRecordLabel = document.getElementById('new-record-label');
+    const feedbackEl = document.getElementById('feedback');
+    const startBtn = document.getElementById('start-btn');
+    const tutorialBtn = document.getElementById('tutorial-btn');
+    const manualBtn = document.getElementById('manual-btn');
+    const loadingMsg = document.getElementById('loading-msg');
+    const jumpscareOverlay = document.getElementById('jumpscare-overlay');
+    const jumpscareImg = document.getElementById('jumpscare-image');
+    const tutorialBubble = document.getElementById('tutorial-bubble');
+    const tutorialText = document.getElementById('tutorial-text');
+
+    // Audio Setup
+    const DEFAULT_VOLUME = 0.5;
+    const bgm = new Audio();
+    bgm.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/maou_bgm_fantasy09.mp3';
+    bgm.loop = true;
+    bgm.volume = DEFAULT_VOLUME; 
+
+    const shotSe = new Audio();
+    shotSe.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/maou_se_battle_gun03.mp3';
+    shotSe.volume = 1.0;
+
+    const piSe = new Audio();
+    piSe.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/pi.mp3';
+    piSe.volume = 1.0;
+
+    const damageSe = new Audio();
+    damageSe.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/katana.mp3';
+    damageSe.volume = 1.0;
+
+    const correctSe = new Audio();
+    correctSe.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/seikai.mp3';
+    correctSe.volume = 1.0;
+
+    const successLeftSe = new Audio();
+    successLeftSe.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/gasyan.mp3';
+    successLeftSe.volume = 1.0;
+
+    // Asset Management
+    let assetsLoaded = 0;
+    const totalAssets = 12;
+
+    const checkAllAssetsLoaded = () => {
+        assetsLoaded++;
+        if (assetsLoaded === totalAssets) {
+            startBtn.classList.remove('hidden');
+            tutorialBtn.classList.remove('hidden');
+            manualBtn.classList.remove('hidden');
+            loadingMsg.classList.add('hidden');
+            updateHighScoreUI();
+        }
+    };
+
+    const madmanImg = new Image();
+    madmanImg.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/mental_yandere_woman.png';
+    madmanImg.onload = checkAllAssetsLoaded;
+
+    const workerImg = new Image();
+    workerImg.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/stand_sagyouin_shinken_man.png';
+    workerImg.onload = checkAllAssetsLoaded;
+
+    const cthulhuImg = new Image();
+    cthulhuImg.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/character_cthulhu_kuturufu.png';
+    cthulhuImg.onload = checkAllAssetsLoaded;
+
+    const hasturImg = new Image();
+    hasturImg.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/character_cthulhu_hastur.png';
+    hasturImg.onload = checkAllAssetsLoaded;
+
+    const berserkerImg = new Image();
+    berserkerImg.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/fantasy_berserker.png';
+    berserkerImg.onload = checkAllAssetsLoaded;
+
+    const azathothImg = new Image();
+    azathothImg.src = 'https://raw.githubusercontent.com/hw26a065-cmd/ai-sozai/main/character_cthulhu_azathoth.png';
+    azathothImg.onload = checkAllAssetsLoaded;
+
+    bgm.oncanplaythrough = checkAllAssetsLoaded;
+    shotSe.oncanplaythrough = checkAllAssetsLoaded;
+    piSe.oncanplaythrough = checkAllAssetsLoaded;
+    damageSe.oncanplaythrough = checkAllAssetsLoaded;
+    correctSe.oncanplaythrough = checkAllAssetsLoaded;
+    successLeftSe.oncanplaythrough = checkAllAssetsLoaded;
+
+    // Game State
+    let score = 0;
+    let lives = 3;
+    let gameActive = false;
+    let isTutorial = false;
+    let tutorialStep = 0;
+    let currentItem = null;
+    let spawnStartTime = 0;
+    let flashEffect = 0;
+    let highScore = parseInt(localStorage.getItem('madman_sort_highscore')) || 0;
+    
+    // Difficulty settings
+    const INITIAL_TIME_LIMIT = 3500;
+    const MIN_TIME_LIMIT = 1200;
+    const TIME_REDUCTION = 250; 
+    let currentTimeLimit = INITIAL_TIME_LIMIT;
+    let totalSortedCount = 0;
+
+    // Character templates
+    const itemTemplates = [
+        { name: '狂人', image: madmanImg, type: 'left', hp: 1, variant: 'madman', weight: 2 },
+        { name: '作業員', image: workerImg, type: 'right', hp: 1, variant: 'worker', weight: 2 },
+        { name: '怪物', image: cthulhuImg, type: 'shoot', hp: 1, variant: 'monster', weight: 2 },
+        { name: 'ハスター', image: hasturImg, type: 'shoot', hp: 3, variant: 'monster', weight: 1.5 },
+        { name: 'バーサーカー', image: berserkerImg, type: 'berserk', hp: 1, variant: 'berserker', weight: 1.5 },
+        { name: 'アザトース', image: azathothImg, type: 'none', hp: 1, variant: 'azathoth', weight: 1 } 
+    ];
+
+    function updateHighScoreUI() {
+        highScoreStartEl.textContent = highScore;
+        highScoreEndEl.textContent = highScore;
+    }
+
+    function toggleManual(show) {
+        if (show) manualScreen.classList.remove('hidden');
+        else manualScreen.classList.add('hidden');
+    }
+
+    function resize() {
+        const containerWidth = window.innerWidth * 0.95;
+        const containerHeight = window.innerHeight * 0.7;
+        canvas.width = Math.min(containerWidth, 600);
+        canvas.height = Math.min(containerHeight, 500);
+        if (currentItem) draw();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+    function updateLifeUI() {
+        const hearts = lifeContainer.querySelectorAll('.life-heart');
+        hearts.forEach((heart, index) => {
+            heart.classList.toggle('life-lost', index >= lives);
+        });
+    }
+
+    function updateDifficulty() {
+        if (isTutorial) return;
+        totalSortedCount++;
+        if (totalSortedCount % 5 === 0) {
+            currentTimeLimit = Math.max(MIN_TIME_LIMIT, currentTimeLimit - TIME_REDUCTION);
+            const level = Math.floor(totalSortedCount / 5) + 1;
+            diffEl.textContent = `LEVEL: ${level}`;
+            showFeedback('SPEED UP!', '#f87171');
+        }
+    }
+
+    function spawnItem() {
+        if (!gameActive) return;
+        bgm.volume = DEFAULT_VOLUME;
+
+        let selectedTemplate;
+        if (isTutorial) {
+            // Tutorial fixed progression
+            const sequence = [
+                itemTemplates[1], // Worker -> Right
+                itemTemplates[0], // Madman -> Left
+                itemTemplates[2], // Monster -> Shoot
+                itemTemplates[3], // Hastur -> Shoot (3x)
+                itemTemplates[4], // Berserker -> Shoot then Left
+                itemTemplates[5]  // Azathoth -> Leave it
+            ];
+            
+            if (tutorialStep >= sequence.length) {
+                endTutorial();
+                return;
+            }
+            selectedTemplate = sequence[tutorialStep];
+            updateTutorialUI();
+        } else {
+            const totalWeight = itemTemplates.reduce((sum, item) => sum + item.weight, 0);
+            let random = Math.random() * totalWeight;
+            selectedTemplate = itemTemplates[0];
+
+            for (const template of itemTemplates) {
+                if (random < template.weight) {
+                    selectedTemplate = template;
+                    break;
+                }
+                random -= template.weight;
+            }
+        }
+
+        currentItem = {
+            ...selectedTemplate,
+            currentHp: selectedTemplate.hp,
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            opacity: 0,
+            scale: 0,
+            shake: 0,
+            isExiting: false,
+            timeUp: false,
+            state: selectedTemplate.type
+        };
+
+        if (currentItem.variant === 'azathoth') {
+            bgm.volume = 0;
+        }
+
+        spawnStartTime = performance.now();
+        requestAnimationFrame(updateFrame);
+    }
+
+    function updateTutorialUI() {
+        const messages = [
+            "【作業員】は仕事に戻しましょう。 「右 (D)」へ！",
+            "【狂人】は危険です。隔離室へ送りましょう。 「左 (A)」へ！",
+            "【怪物】が現れました！ 銃で殲滅してください。 「射撃 (W)」！",
+            "【ハスター】は強敵です。 「射撃」を3回叩き込んで！",
+            "【バーサーカー】はまず「射撃」で鎮圧し、その後「左」へ隔離！",
+            "【アザトース】は見てはいけません。 何もせず「放置」しましょう。"
+        ];
+        tutorialText.textContent = messages[tutorialStep] || "";
+    }
+
+    function startTutorial() {
+        isTutorial = true;
+        tutorialStep = 0;
+        tutorialBubble.classList.remove('hidden');
+        startGame();
+    }
+
+    function endTutorial() {
+        gameActive = false;
+        isTutorial = false;
+        tutorialBubble.classList.add('hidden');
+        gameOverTitle.textContent = "訓練完了";
+        gameOverScreen.classList.remove('hidden');
+        finalScoreEl.textContent = "READY";
+        newRecordLabel.classList.add('hidden');
+    }
+
+    function triggerJumpscare() {
+        gameActive = false;
+        piSe.play();
+        jumpscareOverlay.style.display = 'flex';
+        
+        let shakeCount = 0;
+        const shakeInterval = setInterval(() => {
+            const x = (Math.random() - 0.5) * 50;
+            const y = (Math.random() - 0.5) * 50;
+            const scale = 1.5 + Math.random() * 0.5;
+            jumpscareImg.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+            shakeCount++;
+            if (shakeCount > 40) {
+                clearInterval(shakeInterval);
+                jumpscareOverlay.style.display = 'none';
+                endGame('アザトースの逆鱗に触れた');
+            }
+        }, 30);
+    }
+
+    function updateFrame(timestamp) {
+        if (!gameActive || !currentItem || currentItem.isExiting) return;
+
+        const elapsed = timestamp - spawnStartTime;
+        const entranceDuration = 600; 
+        
+        // No time limit for tutorial steps 0-4 to allow reading
+        const limit = (isTutorial && tutorialStep < 5) ? 999999 : currentTimeLimit;
+        const timeLeftPercent = Math.max(0, 100 - (elapsed / limit) * 100);
+        timeBarFill.style.width = isTutorial && tutorialStep < 5 ? '100%' : timeLeftPercent + '%';
+
+        if (elapsed >= limit && !currentItem.timeUp) {
+            currentItem.timeUp = true;
+            
+            if (currentItem.variant === 'azathoth') {
+                score += 100;
+                scoreEl.textContent = score;
+                showFeedback('SUCCESS', '#10b981');
+                if (isTutorial) tutorialStep++;
+                updateDifficulty();
+            } else {
+                damageSe.currentTime = 0;
+                damageSe.play().catch(e => console.error(e));
+                
+                lives--;
+                updateLifeUI();
+                showFeedback('TIMEOUT!', '#facc15');
+                if (lives <= 0) { endGame('生存限界'); return; }
+            }
+            
+            autoExit();
+            return;
+        }
+        
+        if (elapsed < entranceDuration) {
+            const progress = elapsed / entranceDuration;
+            currentItem.scale = easeOutCubic(progress);
+            currentItem.opacity = progress;
+        } else {
+            currentItem.scale = 1.0 + ((elapsed - entranceDuration) / 6000); 
+            currentItem.opacity = 1;
+        }
+
+        if (currentItem.shake > 0) currentItem.shake *= 0.9;
+
+        draw();
+        requestAnimationFrame(updateFrame);
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Zones
+        ctx.fillStyle = '#450a0a'; ctx.fillRect(0, 0, canvas.width/2, canvas.height);
+        ctx.fillStyle = '#1e3a8a'; ctx.fillRect(canvas.width/2, 0, canvas.width/2, canvas.height);
+
+        ctx.fillStyle = 'white'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('隔離室', canvas.width * 0.25, canvas.height - 20);
+        ctx.fillText('現場', canvas.width * 0.75, canvas.height - 20);
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, 100, 0, Math.PI*2); ctx.stroke();
+
+        if (currentItem) {
+            ctx.save();
+            ctx.globalAlpha = currentItem.opacity;
+            
+            if (currentItem.variant === 'azathoth') {
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = 'purple';
+            }
+
+            const shakeX = (Math.random() - 0.5) * currentItem.shake;
+            ctx.translate(currentItem.x + shakeX, currentItem.y);
+            ctx.scale(currentItem.scale, currentItem.scale);
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.beginPath(); ctx.ellipse(0, 70, 45, 12, 0, 0, Math.PI * 2); ctx.fill();
+
+            if (currentItem.image) {
+                const imgSize = 160;
+                const aspectRatio = currentItem.image.width / currentItem.image.height;
+                ctx.drawImage(currentItem.image, -(imgSize*aspectRatio)/2, -imgSize/2, imgSize*aspectRatio, imgSize);
+            }
+            
+            if (currentItem.hp > 1 && currentItem.currentHp > 0) {
+                const barWidth = 60;
+                const hpPercent = currentItem.currentHp / currentItem.hp;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(-barWidth/2, -100, barWidth, 6);
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(-barWidth/2, -100, barWidth * hpPercent, 6);
+            }
+
+            ctx.font = 'bold 18px sans-serif';
+            ctx.fillStyle = currentItem.variant === 'azathoth' ? '#a855f7' : 'white';
+            ctx.fillText(currentItem.name, 0, 85);
+            ctx.restore();
+        }
+
+        if (flashEffect > 0) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${flashEffect})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            flashEffect -= 0.1;
+        }
+    }
+
+    function showFeedback(text, color) {
+        feedbackEl.textContent = text;
+        feedbackEl.style.color = color;
+        feedbackEl.style.opacity = '1';
+        feedbackEl.style.transform = 'translateY(-30px)';
+        setTimeout(() => {
+            feedbackEl.style.opacity = '0';
+            feedbackEl.style.transform = 'translateY(0px)';
+        }, 400);
+    }
+
+    function playShotSound() {
+        shotSe.currentTime = 0;
+        shotSe.play().catch(e => console.error(e));
+    }
+
+    function handleInput(direction) {
+        if (!gameActive || !currentItem || currentItem.isExiting) return;
+
+        if (currentItem.variant === 'azathoth') {
+            triggerJumpscare();
+            return;
+        }
+
+        if (direction === 'shoot') {
+            flashEffect = 0.5;
+            playShotSound();
+            
+            if (currentItem.state !== 'shoot' && currentItem.state !== 'berserk') {
+                if (!isTutorial) {
+                    lives--;
+                    updateLifeUI();
+                    if (lives <= 0) { endGame('誤射による更迭'); return; }
+                }
+                showFeedback('CRITICAL ERROR', '#ef4444');
+                exitWithDirection('shoot');
+                return;
+            }
+
+            if (currentItem.state === 'berserk') {
+                currentItem.state = 'left';
+                currentItem.image = madmanImg; 
+                currentItem.name = '狂人 (鎮圧済み)';
+                currentItem.shake = 20;
+                showFeedback('SUPPRESSED', '#10b981');
+                return;
+            }
+
+            currentItem.currentHp--;
+            currentItem.shake = 15;
+            if (currentItem.currentHp > 0) {
+                showFeedback('HIT!', '#fbbf24');
+                return; 
+            }
+        }
+
+        let isCorrect = false;
+        if (direction === currentItem.state) {
+            isCorrect = true;
+        }
+
+        if (isCorrect) {
+            if (currentItem.variant === 'worker') {
+                correctSe.currentTime = 0;
+                correctSe.play().catch(e => console.error(e));
+            } else if (direction === 'left') {
+                successLeftSe.currentTime = 0;
+                successLeftSe.play().catch(e => console.error(e));
+            }
+
+            score += (currentItem.hp > 1 || currentItem.variant === 'berserker') ? 50 : 15;
+            showFeedback('SUCCESS', '#10b981');
+            if (isTutorial) tutorialStep++;
+            updateDifficulty();
+        } else {
+            if (!isTutorial) {
+                lives--;
+                updateLifeUI();
+                if (lives <= 0) { endGame('生存限界'); return; }
+            }
+            showFeedback('MISS / FAILED', '#ffffff');
+        }
+        
+        scoreEl.textContent = score;
+        exitWithDirection(direction);
+    }
+
+    function exitWithDirection(direction) {
+        if (!currentItem || currentItem.isExiting) return;
+        currentItem.isExiting = true;
+        
+        const startX = currentItem.x;
+        const startY = currentItem.y;
+        let targetX = startX;
+        let targetY = startY;
+
+        if (direction === 'left') targetX = -200;
+        else if (direction === 'right') targetX = canvas.width + 200;
+        else if (direction === 'shoot') targetY = canvas.height + 200;
+
+        let exitStart = null;
+        const animateExit = (timestamp) => {
+            if (!exitStart) exitStart = timestamp;
+            const progress = (timestamp - exitStart) / 120;
+            if (currentItem) {
+                currentItem.x = startX + (targetX - startX) * progress;
+                currentItem.y = startY + (targetY - startY) * progress;
+                currentItem.opacity = 1 - progress;
+                draw();
+            }
+            if (progress < 1) requestAnimationFrame(animateExit);
+            else spawnItem();
+        };
+        requestAnimationFrame(animateExit);
+    }
+
+    function autoExit() {
+        if (!currentItem) return;
+        currentItem.isExiting = true;
+        const startY = currentItem.y;
+        let exitStart = null;
+        const animate = (t) => {
+            if (!exitStart) exitStart = t;
+            const p = (t - exitStart) / 400;
+            if (currentItem) { currentItem.y = startY - 100 * p; currentItem.opacity = 1 - p; draw(); }
+            if (p < 1) requestAnimationFrame(animate);
+            else spawnItem();
+        };
+        requestAnimationFrame(animate);
+    }
+
+    function startGame() {
+        if (bgm.paused) bgm.play().catch(e => console.error(e));
+        bgm.volume = DEFAULT_VOLUME;
+        startScreen.classList.add('hidden');
+        manualScreen.classList.add('hidden');
+        gameActive = true;
+        score = 0; lives = 3;
+        totalSortedCount = 0;
+        currentTimeLimit = INITIAL_TIME_LIMIT;
+        scoreEl.textContent = score;
+        diffEl.textContent = 'LEVEL: 1';
+        updateLifeUI();
+        spawnItem();
+    }
+
+    function endGame(reason) {
+        gameActive = false;
+        isTutorial = false;
+        tutorialBubble.classList.add('hidden');
+        bgm.volume = DEFAULT_VOLUME; 
+        
+        let isNewRecord = false;
+        if (score > highScore) {
+            highScore = score;
+            localStorage.setItem('madman_sort_highscore', highScore);
+            isNewRecord = true;
+        }
+        
+        updateHighScoreUI();
+        newRecordLabel.classList.toggle('hidden', !isNewRecord);
+        
+        gameOverTitle.textContent = reason || '完全に発狂した';
+        gameOverScreen.classList.remove('hidden');
+        finalScoreEl.textContent = score;
+        timeBarFill.style.width = '0%';
+    }
+
+    function resetGame() {
+        gameOverScreen.classList.add('hidden');
+        startScreen.classList.remove('hidden');
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (!gameActive) return;
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') handleInput('left');
+        if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') handleInput('right');
+        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') handleInput('shoot');
+    });
+
+    document.getElementById('btn-left').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('left'); });
+    document.getElementById('btn-right').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('right'); });
+    document.getElementById('btn-shoot').addEventListener('touchstart', (e) => { e.preventDefault(); handleInput('shoot'); });
+
+    draw();
+</script>
+
+</body>
+</html>
